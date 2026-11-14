@@ -14,24 +14,60 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Check ZIP File
+        run: |
+          test -f ROS_QII_TESTER_V1.zip
 
       - name: Extract Tester Project
         run: |
           unzip -o ROS_QII_TESTER_V1.zip -d extracted
 
           test -f extracted/ROS_QII_TESTER_V1/project.yml
+          test -f extracted/ROS_QII_TESTER_V1/ROSQiiTester/ROSQiiTesterApp.swift
 
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          brew install xcodegen
+
+      - name: Fix Xcode Project Configuration
+        working-directory: extracted/ROS_QII_TESTER_V1
+        run: |
+          cat > project.yml <<'YAML'
+          name: ROSQiiTester
+
+          options:
+            bundleIdPrefix: net.qiiqii
+            deploymentTarget:
+              iOS: "16.0"
+
+          targets:
+            ROSQiiTester:
+              type: application
+              platform: iOS
+
+              sources:
+                - ROSQiiTester
+
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: net.qiiqii.rosqii.tester
+                  PRODUCT_NAME: ROSQiiTester
+                  SWIFT_VERSION: "5.0"
+                  TARGETED_DEVICE_FAMILY: "1,2"
+                  GENERATE_INFOPLIST_FILE: YES
+                  INFOPLIST_KEY_CFBundleDisplayName: ROS QII Tester
+                  INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads: NO
+          YAML
 
       - name: Generate Xcode Project
         working-directory: extracted/ROS_QII_TESTER_V1
         run: |
           xcodegen generate --spec project.yml
 
-      - name: Build Unsigned IPA
+      - name: Build Unsigned iOS App
         working-directory: extracted/ROS_QII_TESTER_V1
         run: |
           xcodebuild \
@@ -43,20 +79,32 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package IPA
+      - name: Verify App
         working-directory: extracted/ROS_QII_TESTER_V1
         run: |
+          APP="build/Build/Products/Release-iphoneos/ROSQiiTester.app"
+
+          test -d "$APP"
+          test -f "$APP/Info.plist"
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+
+      - name: Package Unsigned IPA
+        working-directory: extracted/ROS_QII_TESTER_V1
+        run: |
+          APP="build/Build/Products/Release-iphoneos/ROSQiiTester.app"
+
           mkdir -p Payload
+          cp -R "$APP" Payload/
 
-          cp -R \
-            build/Build/Products/Release-iphoneos/ROSQiiTester.app \
-            Payload/
+          /usr/bin/zip -qry ROS-QII-TESTER-unsigned.ipa Payload
 
-          zip -qry ROS-QII-TESTER-unsigned.ipa Payload
+          test -f ROS-QII-TESTER-unsigned.ipa
 
-      - name: Upload IPA
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ROS-QII-TESTER-IPA
+          name: ROS-QII-TESTER-V1-IPA
           path: extracted/ROS_QII_TESTER_V1/ROS-QII-TESTER-unsigned.ipa
           if-no-files-found: error
+          retention-days: 7
