@@ -17,13 +17,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract Tester Project
+        run: |
+          unzip -o ROS_QII_TESTER_V1.zip -d extracted
+
+          test -f extracted/ROS_QII_TESTER_V1/project.yml
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode project
-        run: xcodegen generate --spec project.yml
+      - name: Generate Xcode Project
+        working-directory: extracted/ROS_QII_TESTER_V1
+        run: |
+          xcodegen generate --spec project.yml
 
-      - name: Build unsigned app
+      - name: Build Unsigned IPA
+        working-directory: extracted/ROS_QII_TESTER_V1
         run: |
           xcodebuild \
             -project ROSQiiTester.xcodeproj \
@@ -34,15 +43,20 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package unsigned IPA
+      - name: Package IPA
+        working-directory: extracted/ROS_QII_TESTER_V1
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/ROSQiiTester.app Payload/
-          /usr/bin/zip -qry ROS-QII-TESTER-unsigned.ipa Payload
+
+          cp -R \
+            build/Build/Products/Release-iphoneos/ROSQiiTester.app \
+            Payload/
+
+          zip -qry ROS-QII-TESTER-unsigned.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ROS-QII-TESTER-unsigned-IPA
-          path: ROS-QII-TESTER-unsigned.ipa
+          name: ROS-QII-TESTER-IPA
+          path: extracted/ROS_QII_TESTER_V1/ROS-QII-TESTER-unsigned.ipa
           if-no-files-found: error
